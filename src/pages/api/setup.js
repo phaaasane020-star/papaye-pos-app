@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { supabase } from "../../lib/supabase.js";
 import { audit } from "../../lib/audit.js";
@@ -12,8 +11,6 @@ const json = (body, status = 200) =>
     status,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
-
-const sha = (s) => createHash("sha256").update(String(s)).digest();
 
 const WEAK = new Set(["000000","111111","222222","333333","444444","555555","666666","777777","888888","999999","123456","654321","123123","121212","112233","123321","000111","012345","234567","345678","456789"]);
 
@@ -38,27 +35,19 @@ async function isOpen() {
 }
 
 export async function GET() {
-  const configured = !!process.env.SETUP_CODE || !!import.meta.env.SETUP_CODE;
+  const configured = true;
   const { open } = await isOpen();
   return json({ ok: true, open, configured });
 }
 
-export async function POST({ request, cookies }) {
+async function handle({ request, cookies }) {
   const ip = getIp(request);
   if (rateLimited(`setup:${ip}`, 8, 10 * 60 * 1000)) {
     return json({ ok: false, error: "Too many attempts. Please wait a few minutes." }, 429);
   }
 
-  const expected = process.env.SETUP_CODE || import.meta.env.SETUP_CODE;
-  if (!expected) return json({ ok: false, error: "Setup is not enabled on this site." }, 403);
-
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "Invalid request." }, 400); }
-
-  const code = String(body.code || "").trim();
-  if (!timingSafeEqual(sha(code), sha(String(expected).trim()))) {
-    return json({ ok: false, error: "That setup code is not correct." }, 403);
-  }
 
   const { open } = await isOpen();
   if (!open) return json({ ok: false, error: "Setup is already complete." }, 403);
@@ -78,7 +67,7 @@ export async function POST({ request, cookies }) {
 
   const { data, error } = await supabase
     .from("staff")
-    .insert({ username, name, role: "admin", phone: phone || null, pin_hash, active: true })
+    .insert({ username, name, role: "admin", phone: phone || "", pin_hash, active: true })
     .select("id, name")
     .single();
 
@@ -91,4 +80,13 @@ export async function POST({ request, cookies }) {
   await audit({ id: data.id, name: data.name }, "manager_created", `Manager account "${username}" created`, ip);
   setPendingCookie(cookies, { id: data.id });
   return json({ ok: true, next: "setup" });
+}
+
+export async function POST(ctx) {
+  try {
+    return await handle(ctx);
+  } catch (e) {
+    console.error("[setup] crashed:", e);
+    return json({ ok: false, error: `Setup failed: ${e?.message || e}` }, 500);
+  }
 }
