@@ -1,4 +1,21 @@
 // Checks staff details coming from the Staff page
+
+const EASY = new Set([
+  "000000", "111111", "222222", "333333", "444444", "555555", "666666", "777777", "888888", "999999",
+  "123456", "654321", "123123", "121212", "112233", "123321", "000111", "012345", "234567", "345678", "456789",
+]);
+
+function easyPin(pin) {
+  if (EASY.has(pin)) return true;
+  let up = true;
+  let down = true;
+  for (let i = 1; i < pin.length; i++) {
+    if (Number(pin[i]) !== Number(pin[i - 1]) + 1) up = false;
+    if (Number(pin[i]) !== Number(pin[i - 1]) - 1) down = false;
+  }
+  return up || down;
+}
+
 export function validateStaff(body, partial = false) {
   if (!body || typeof body !== "object") return { error: "Bad request." };
   const out = {};
@@ -33,7 +50,8 @@ export function validateStaff(body, partial = false) {
   let pin = null;
   const rawPin = body.pin === undefined || body.pin === null ? "" : String(body.pin).trim();
   if (!partial || rawPin !== "") {
-    if (!/^\d{4,6}$/.test(rawPin)) return { error: "PIN must be 4 to 6 digits." };
+    if (!/^\d{6}$/.test(rawPin)) return { error: "PIN must be exactly 6 digits." };
+    if (easyPin(rawPin)) return { error: "That PIN is too easy to guess. Choose another." };
     pin = rawPin;
   }
 

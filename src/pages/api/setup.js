@@ -61,7 +61,7 @@ async function handle(ctx) {
   if (name.length < 2 || name.length > 60) return json({ ok: false, error: "Enter the full name (2 to 60 characters)." }, 400);
   if (!/^[a-z0-9._-]{3,30}$/.test(username)) return json({ ok: false, error: "Username: 3 to 30 letters, numbers, dot, dash or underscore." }, 400);
   if (phone && !/^[0-9+\s-]{7,20}$/.test(phone)) return json({ ok: false, error: "Enter a valid phone number." }, 400);
-  if (!/^\d{6,10}$/.test(pin)) return json({ ok: false, error: "PIN must be 6 to 10 digits." }, 400);
+  if (!/^\d{6}$/.test(pin)) return json({ ok: false, error: "PIN must be exactly 6 digits." }, 400);
   if (weakPin(pin)) return json({ ok: false, error: "That PIN is too easy to guess. Choose another." }, 400);
 
   const pin_hash = await bcrypt.hash(pin, 10);

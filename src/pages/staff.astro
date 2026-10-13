@@ -47,7 +47,7 @@ import AppLayout from "../layouts/AppLayout.astro";
       <label for="sPhone" class="text-sm font-semibold">Phone number</label>
       <input id="sPhone" type="tel" required class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
 
-      <label for="sPin" id="pinLabel" class="text-sm font-semibold">PIN (4 to 6 digits)</label>
+      <label for="sPin" id="pinLabel" class="text-sm font-semibold">PIN (6 digits)</label>
       <input id="sPin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" class="mb-5 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
 
       <p id="formError" class="mb-3 hidden text-sm font-semibold text-red-600"></p>
@@ -63,6 +63,7 @@ import AppLayout from "../layouts/AppLayout.astro";
 <script>
   import { getSession } from "../lib/session.js";
   import { getStaff, createStaff, updateStaff } from "../lib/staff.js";
+  import { confirmAction } from "../lib/confirm.js";
 
   const esc = (s) =>
     String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -121,7 +122,7 @@ import AppLayout from "../layouts/AppLayout.astro";
       sRole.value = m ? m.role : "cashier";
       sPhone.value = m ? m.phone : "";
       sPin.value = "";
-      pinLabel.textContent = m ? "New PIN (leave empty to keep the current one)" : "PIN (4 to 6 digits)";
+      pinLabel.textContent = m ? "New PIN (leave empty to keep the current one)" : "PIN (6 digits)";
       sPin.required = !m;
       dlg.showModal();
       sName.focus();
@@ -145,11 +146,23 @@ import AppLayout from "../layouts/AppLayout.astro";
         if (b.dataset.act === "unlock") {
           await updateStaff(id, { unlock: true });
         } else if (b.dataset.act === "reset") {
-          if (!confirm(`Reset the authenticator for ${m.name}? They will set it up again at their next login.`)) return;
+          const ok = await confirmAction({
+            title: `Reset the authenticator for ${m.name}?`,
+            message: "They will set it up again at their next login.",
+            confirmText: "Yes, reset it",
+            danger: true,
+          });
+          if (!ok) return;
           await updateStaff(id, { resetAuthenticator: true });
         } else if (b.dataset.act === "toggle") {
           const verb = m.active ? "Deactivate" : "Activate";
-          if (!confirm(`${verb} ${m.name}?`)) return;
+          const ok = await confirmAction({
+            title: `${verb} ${m.name}?`,
+            message: m.active ? "They will be signed out and will not be able to sign in until you activate them again." : "They will be able to sign in again.",
+            confirmText: `Yes, ${verb.toLowerCase()}`,
+            danger: m.active,
+          });
+          if (!ok) return;
           await updateStaff(id, { active: !m.active });
         }
         await draw();
@@ -164,6 +177,16 @@ import AppLayout from "../layouts/AppLayout.astro";
 
       try {
         if (sId.value) {
+          const current = list.find((x) => x.id === Number(sId.value));
+          if (current && current.role !== sRole.value) {
+            const ok = await confirmAction({
+              title: "Change this role?",
+              message: `${current.name} will become a ${sRole.value === "admin" ? "Manager, with full access" : "Cashier, with sales access only"}.`,
+              confirmText: "Yes, change role",
+              danger: sRole.value === "admin",
+            });
+            if (!ok) return;
+          }
           const changes = { name: sName.value, role: sRole.value, phone: sPhone.value };
           if (sPin.value) changes.pin = sPin.value;
           await updateStaff(Number(sId.value), changes);
