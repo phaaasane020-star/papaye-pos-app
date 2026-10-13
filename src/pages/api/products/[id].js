@@ -6,6 +6,16 @@ import { removeImage } from "../../../lib/images.js";
 
 export const prerender = false;
 
+// Several versions of one food can share a photo, so only delete the file when nobody else uses it
+async function imageInUse(url, excludeId) {
+  const { count } = await supabase
+    .from("products")
+    .select("id", { count: "exact", head: true })
+    .eq("image", url)
+    .neq("id", excludeId);
+  return (count || 0) > 0;
+}
+
 export async function PATCH({ params, request, cookies, clientAddress }) {
   const { user, response } = requireUser(cookies, true);
   if (response) return response;
@@ -50,8 +60,10 @@ export async function PATCH({ params, request, cookies, clientAddress }) {
     );
   }
 
-  // The old picture is no longer used
-  if (before?.image && "image" in value && value.image !== before.image) await removeImage(before.image);
+  // The old picture is no longer used by this product
+  if (before?.image && "image" in value && value.image !== before.image) {
+    if (!(await imageInUse(before.image, id))) await removeImage(before.image);
+  }
 
   return json(mapProduct(data));
 }
@@ -70,7 +82,7 @@ export async function DELETE({ params, request, cookies, clientAddress }) {
 
   if (before) {
     await audit(user, "product_deleted", { name: before.name, price: Number(before.price) }, getIp({ request, clientAddress }));
-    await removeImage(before.image);
+    if (before.image && !(await imageInUse(before.image, id))) await removeImage(before.image);
   }
   return json({ ok: true });
 }

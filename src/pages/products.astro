@@ -31,13 +31,34 @@ import AppLayout from "../layouts/AppLayout.astro";
       </div>
 
       <label for="fName" class="text-sm font-semibold">Name</label>
-      <input id="fName" required maxlength="80" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+      <input id="fName" required maxlength="60" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
 
       <label for="fCategory" class="text-sm font-semibold">Category</label>
       <select id="fCategory" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold"></select>
 
-      <label for="fPrice" class="text-sm font-semibold">Price (GH₵)</label>
-      <input id="fPrice" type="number" min="0" step="0.01" required inputmode="decimal" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+      <!-- Different prices (only when adding a new food) -->
+      <label id="fVaryWrap" class="mb-3 flex items-start gap-2 rounded-xl bg-gold/15 p-3 text-sm font-semibold">
+        <input id="fVary" type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 accent-[#FFBB00]" />
+        <span>This food has different prices (sizes or portions)
+          <span class="block text-xs font-normal text-mist">Example: Jollof Rice in Small, Medium and Large. One product is created for each, with its exact price.</span>
+        </span>
+      </label>
+
+      <!-- One price -->
+      <div id="fSingle">
+        <label for="fPrice" class="text-sm font-semibold">Price (GH₵)</label>
+        <input id="fPrice" type="number" min="0" step="0.01" required inputmode="decimal" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+      </div>
+
+      <!-- Several prices -->
+      <div id="fVariants" class="mb-3 hidden">
+        <div class="mb-1 grid grid-cols-[1fr_7rem_2.25rem] gap-2 text-xs font-semibold text-mist">
+          <span>Label</span><span>Price (GH₵)</span><span></span>
+        </div>
+        <div id="fVarRows" class="space-y-2"></div>
+        <button id="fAddVar" type="button" class="press mt-2 rounded-lg border border-dashed border-mist/60 px-3 py-2 text-sm font-semibold hover:border-gold hover:bg-gold/10">+ Add another price</button>
+        <p id="fVarPreview" class="mt-3 rounded-lg bg-white p-3 text-xs text-mist"></p>
+      </div>
 
       <label class="mb-5 flex items-center gap-2 text-sm font-semibold">
         <input id="fStock" type="checkbox" checked class="h-4 w-4 accent-[#FFBB00]" />
@@ -94,6 +115,13 @@ import AppLayout from "../layouts/AppLayout.astro";
     const fSave = document.getElementById("fSave");
     const formTitle = document.getElementById("formTitle");
 
+    const fVaryWrap = document.getElementById("fVaryWrap");
+    const fVary = document.getElementById("fVary");
+    const fSingle = document.getElementById("fSingle");
+    const fVariants = document.getElementById("fVariants");
+    const fVarRows = document.getElementById("fVarRows");
+    const fVarPreview = document.getElementById("fVarPreview");
+
     let list = [];
     let editing = null; // the product being edited, or null when adding
     let newPhoto = null; // a shrunk picture waiting to be uploaded
@@ -103,6 +131,68 @@ import AppLayout from "../layouts/AppLayout.astro";
     fCategory.innerHTML = categories.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
     const catName = (id) => categories.find((c) => c.id === id)?.name ?? id;
 
+    // ---------- Several prices ----------
+    function addVarRow(label = "", price = "") {
+      const row = document.createElement("div");
+      row.className = "var-row grid grid-cols-[1fr_7rem_2.25rem] gap-2";
+      row.innerHTML = `
+        <input class="v-label w-full rounded-xl border border-mist/40 bg-white px-3 py-2.5 outline-none focus:border-gold" maxlength="30" placeholder="e.g. Small" value="${esc(label)}" />
+        <input class="v-price w-full rounded-xl border border-mist/40 bg-white px-3 py-2.5 outline-none focus:border-gold" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="${esc(price)}" />
+        <button type="button" class="v-del press rounded-lg text-mist hover:bg-red-50 hover:text-red-600" aria-label="Remove this price">✕</button>`;
+      fVarRows.appendChild(row);
+      refreshVarUi();
+    }
+
+    function readVariants() {
+      return [...fVarRows.querySelectorAll(".var-row")].map((r) => ({
+        label: r.querySelector(".v-label").value.trim(),
+        price: r.querySelector(".v-price").value,
+      }));
+    }
+
+    function refreshVarUi() {
+      const rowsEls = [...fVarRows.querySelectorAll(".var-row")];
+      rowsEls.forEach((r) => {
+        r.querySelector(".v-del").classList.toggle("invisible", rowsEls.length <= 2);
+      });
+      document.getElementById("fAddVar").classList.toggle("hidden", rowsEls.length >= 10);
+
+      const base = fName.value.trim() || "Food name";
+      const lines = readVariants()
+        .filter((v) => v.label)
+        .map((v) => `${esc(base)} (${esc(v.label)}) · ${v.price !== "" ? fmt(v.price) : "GH₵ ?"}`);
+      fVarPreview.innerHTML = lines.length
+        ? `<b class="text-ink">Will be created:</b><br>${lines.join("<br>")}`
+        : "Type a label and a price for each version.";
+    }
+
+    function setVary(on) {
+      fVary.checked = on;
+      fSingle.classList.toggle("hidden", on);
+      fVariants.classList.toggle("hidden", !on);
+      fPrice.required = !on;
+      if (on && fVarRows.children.length === 0) {
+        addVarRow();
+        addVarRow();
+      }
+      refreshVarUi();
+    }
+
+    fVary.addEventListener("change", () => setVary(fVary.checked));
+    document.getElementById("fAddVar").addEventListener("click", () => addVarRow());
+    fVarRows.addEventListener("input", refreshVarUi);
+    fVarRows.addEventListener("click", (e) => {
+      const del = e.target.closest(".v-del");
+      if (!del) return;
+      if (fVarRows.children.length <= 2) return;
+      del.closest(".var-row").remove();
+      refreshVarUi();
+    });
+    fName.addEventListener("input", () => {
+      if (fVary.checked) refreshVarUi();
+    });
+
+    // ---------- List ----------
     async function draw() {
       try {
         list = await getProducts();
@@ -164,9 +254,16 @@ import AppLayout from "../layouts/AppLayout.astro";
       formTitle.textContent = p ? "Edit product" : "Add product";
       fId.value = p ? p.id : "";
       fName.value = p ? p.name : "";
+      fName.maxLength = p ? 80 : 60;
       fCategory.value = p ? p.category : categories[0].id;
       fPrice.value = p ? p.price : "";
       fStock.checked = p ? p.inStock : true;
+
+      // Different prices are chosen when ADDING a food; each version is edited on its own afterwards
+      fVarRows.innerHTML = "";
+      fVaryWrap.classList.toggle("hidden", Boolean(p));
+      setVary(false);
+
       showPreview();
       dlg.showModal();
       fName.focus();
@@ -240,25 +337,44 @@ import AppLayout from "../layouts/AppLayout.astro";
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const price = parseFloat(fPrice.value);
-      if (!fName.value.trim() || isNaN(price) || price < 0) return;
+      const name = fName.value.trim();
+      if (!name) return;
 
-      // Changing a price affects every new sale, so ask first
-      if (editing && Math.round(price * 100) !== Math.round(editing.price * 100)) {
-        const ok = await confirmAction({
-          title: "Change the price?",
-          message: `"${editing.name}" will change from ${fmt(editing.price)} to ${fmt(price)} for all new sales.`,
-          confirmText: "Yes, change price",
-        });
-        if (!ok) return;
+      const varying = !editing && fVary.checked;
+      let variants = [];
+      let price = NaN;
+
+      if (varying) {
+        variants = readVariants();
+        if (variants.length < 2) return alert("Add at least two prices.");
+        const seen = new Set();
+        for (const v of variants) {
+          const n = parseFloat(v.price);
+          if (!v.label) return alert("Every price needs a label, like Small or Large.");
+          if (isNaN(n) || n < 0) return alert(`Enter a valid price for "${v.label}".`);
+          const key = v.label.toLowerCase();
+          if (seen.has(key)) return alert(`The label "${v.label}" is used twice.`);
+          seen.add(key);
+        }
+        variants = variants.map((v) => ({ label: v.label, price: parseFloat(v.price) }));
+      } else {
+        price = parseFloat(fPrice.value);
+        if (isNaN(price) || price < 0) return;
+
+        // Changing a price affects every new sale, so ask first
+        if (editing && Math.round(price * 100) !== Math.round(editing.price * 100)) {
+          const ok = await confirmAction({
+            title: "Change the price?",
+            message: `"${editing.name}" will change from ${fmt(editing.price)} to ${fmt(price)} for all new sales.`,
+            confirmText: "Yes, change price",
+          });
+          if (!ok) return;
+        }
       }
 
-      const payload = {
-        name: fName.value.trim(),
-        category: fCategory.value,
-        price,
-        inStock: fStock.checked,
-      };
+      const payload = { name, category: fCategory.value, inStock: fStock.checked };
+      if (varying) payload.variants = variants;
+      else payload.price = price;
 
       fSave.disabled = true;
       fSave.textContent = "Saving...";
