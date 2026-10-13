@@ -40,8 +40,9 @@ export async function GET() {
   return json({ ok: true, open, configured });
 }
 
-async function handle({ request, cookies }) {
-  const ip = getIp(request);
+async function handle(ctx) {
+  const { request, cookies } = ctx;
+  const ip = getIp(ctx);
   if (rateLimited(`setup:${ip}`, 8, 10 * 60 * 1000)) {
     return json({ ok: false, error: "Too many attempts. Please wait a few minutes." }, 429);
   }
