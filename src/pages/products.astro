@@ -1,0 +1,291 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+---
+<AppLayout title="Products" crumbs={["Products", "Manage menu"]}>
+  <div id="app">
+    <div class="mb-5 flex items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold">Products</h1>
+        <p class="text-sm text-mist">Add foods, set prices and photos, mark items out of stock</p>
+      </div>
+      <button id="addBtn" class="btn-gold shrink-0 rounded-xl px-5 py-2.5 font-bold text-ink">+ Add product</button>
+    </div>
+
+    <ul id="rows" class="divide-y divide-mist/20 overflow-hidden rounded-2xl border border-mist/30 bg-white"></ul>
+  </div>
+
+  <!-- Add / edit pop-up -->
+  <dialog id="form" class="m-auto w-[28rem] max-w-[94vw] rounded-2xl bg-paper p-5 text-ink sm:p-6">
+    <form id="productForm">
+      <h2 id="formTitle" class="mb-4 text-lg font-bold">Add product</h2>
+      <input type="hidden" id="fId" />
+
+      <!-- Photo -->
+      <div class="mb-4 flex items-center gap-4">
+        <div id="fPreview" class="grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-xl border border-mist/30 bg-white text-mist"></div>
+        <div class="flex flex-col gap-2">
+          <label for="fFile" class="press cursor-pointer rounded-xl bg-ink px-4 py-2.5 text-center text-sm font-semibold text-paper">Choose photo</label>
+          <input id="fFile" type="file" accept="image/*" class="hidden" />
+          <button id="fRemovePhoto" type="button" class="hidden rounded-xl px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">Remove photo</button>
+        </div>
+      </div>
+
+      <label for="fName" class="text-sm font-semibold">Name</label>
+      <input id="fName" required maxlength="80" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+
+      <label for="fCategory" class="text-sm font-semibold">Category</label>
+      <select id="fCategory" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold"></select>
+
+      <label for="fPrice" class="text-sm font-semibold">Price (GH₵)</label>
+      <input id="fPrice" type="number" min="0" step="0.01" required inputmode="decimal" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+
+      <label class="mb-5 flex items-center gap-2 text-sm font-semibold">
+        <input id="fStock" type="checkbox" checked class="h-4 w-4 accent-[#FFBB00]" />
+        In stock
+      </label>
+
+      <div class="flex gap-2">
+        <button id="fCancel" type="button" class="press flex-1 rounded-xl bg-mist/20 py-3 font-semibold">Cancel</button>
+        <button id="fSave" type="submit" class="btn-gold flex-1 rounded-xl py-3 font-bold text-ink">Save</button>
+      </div>
+    </form>
+  </dialog>
+</AppLayout>
+
+<script>
+  import { getSession } from "../lib/session.js";
+  import { categories, getProducts, createProduct, updateProduct, deleteProduct, uploadImage } from "../lib/products.js";
+  import { confirmAction } from "../lib/confirm.js";
+
+  const esc = (s) =>
+    String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmt = (n) => "GH₵ " + Number(n).toFixed(2);
+
+  const PLACEHOLDER =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v7a2 2 0 0 0 2 2v9M5 3v5M9 3v5"/><path d="M17 3c-2 2-3 4.5-3 8h3v10"/></svg>';
+
+  // Shrinks a phone photo (often 4-8 MB) to about 100 KB before it is uploaded
+  async function shrink(file, max = 800) {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const w = Math.round(bmp.width * scale);
+    const h = Math.round(bmp.height * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d").drawImage(bmp, 0, 0, w, h);
+    return new Promise((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Could not read that picture."))), "image/jpeg", 0.82)
+    );
+  }
+
+  function init() {
+    const rows = document.getElementById("rows");
+    const dlg = document.getElementById("form");
+    const form = document.getElementById("productForm");
+    const fId = document.getElementById("fId");
+    const fName = document.getElementById("fName");
+    const fCategory = document.getElementById("fCategory");
+    const fPrice = document.getElementById("fPrice");
+    const fStock = document.getElementById("fStock");
+    const fFile = document.getElementById("fFile");
+    const fPreview = document.getElementById("fPreview");
+    const fRemove = document.getElementById("fRemovePhoto");
+    const fSave = document.getElementById("fSave");
+    const formTitle = document.getElementById("formTitle");
+
+    let list = [];
+    let editing = null; // the product being edited, or null when adding
+    let newPhoto = null; // a shrunk picture waiting to be uploaded
+    let newPhotoUrl = null; // local preview of it
+    let removePhoto = false;
+
+    fCategory.innerHTML = categories.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+    const catName = (id) => categories.find((c) => c.id === id)?.name ?? id;
+
+    async function draw() {
+      try {
+        list = await getProducts();
+      } catch (e) {
+        rows.innerHTML = `<li class="p-4 font-semibold text-red-600">${esc(e.message)}</li>`;
+        return;
+      }
+
+      if (list.length === 0) {
+        rows.innerHTML = '<li class="p-8 text-center text-sm text-mist">No foods yet. Tap "+ Add product" to start.</li>';
+        return;
+      }
+
+      rows.innerHTML = list
+        .map(
+          (p) => `
+        <li class="flex flex-wrap items-center gap-3 p-3 sm:flex-nowrap sm:p-4">
+          <div class="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-paper">
+            ${
+              p.image
+                ? `<img src="${esc(p.image)}" alt="" loading="lazy" class="h-full w-full object-cover" />`
+                : `<div class="grid h-full w-full place-items-center text-mist">${PLACEHOLDER}</div>`
+            }
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="truncate font-semibold">${esc(p.name)}</div>
+            <div class="text-xs text-mist">${esc(catName(p.category))} · <span class="font-bold text-ink">${fmt(p.price)}</span></div>
+          </div>
+          <div class="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
+            <button data-act="stock" data-id="${p.id}" class="press rounded-lg px-3 py-2 text-xs font-bold ${p.inStock ? "bg-gold text-ink" : "bg-mist/30 text-ink"}">
+              ${p.inStock ? "In stock" : "Out of stock"}
+            </button>
+            <div class="flex gap-1">
+              <button data-act="edit" data-id="${p.id}" class="press rounded-lg bg-mist/20 px-3 py-2 text-sm font-semibold">Edit</button>
+              <button data-act="del" data-id="${p.id}" class="press rounded-lg px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">Delete</button>
+            </div>
+          </div>
+        </li>`
+        )
+        .join("");
+    }
+
+    function showPreview() {
+      const src = newPhotoUrl || (!removePhoto && editing?.image) || null;
+      fPreview.innerHTML = src
+        ? `<img src="${esc(src)}" alt="" class="h-full w-full object-cover" />`
+        : PLACEHOLDER;
+      fRemove.classList.toggle("hidden", !src);
+    }
+
+    function openForm(p) {
+      editing = p;
+      newPhoto = null;
+      if (newPhotoUrl) URL.revokeObjectURL(newPhotoUrl);
+      newPhotoUrl = null;
+      removePhoto = false;
+      fFile.value = "";
+
+      formTitle.textContent = p ? "Edit product" : "Add product";
+      fId.value = p ? p.id : "";
+      fName.value = p ? p.name : "";
+      fCategory.value = p ? p.category : categories[0].id;
+      fPrice.value = p ? p.price : "";
+      fStock.checked = p ? p.inStock : true;
+      showPreview();
+      dlg.showModal();
+      fName.focus();
+    }
+
+    document.getElementById("addBtn").addEventListener("click", () => openForm(null));
+    document.getElementById("fCancel").addEventListener("click", () => dlg.close());
+
+    fFile.addEventListener("change", async () => {
+      const file = fFile.files?.[0];
+      if (!file) return;
+      try {
+        newPhoto = await shrink(file);
+        if (newPhotoUrl) URL.revokeObjectURL(newPhotoUrl);
+        newPhotoUrl = URL.createObjectURL(newPhoto);
+        removePhoto = false;
+        showPreview();
+      } catch {
+        alert("Could not read that picture. Try a JPG or PNG.");
+        fFile.value = "";
+      }
+    });
+
+    fRemove.addEventListener("click", () => {
+      newPhoto = null;
+      if (newPhotoUrl) URL.revokeObjectURL(newPhotoUrl);
+      newPhotoUrl = null;
+      removePhoto = true;
+      fFile.value = "";
+      showPreview();
+    });
+
+    rows.addEventListener("click", async (e) => {
+      const b = e.target.closest("button[data-act]");
+      if (!b) return;
+      const id = Number(b.dataset.id);
+      const p = list.find((x) => x.id === id);
+      if (!p) return;
+
+      try {
+        if (b.dataset.act === "stock") {
+          // Only going OUT of stock needs a warning; putting it back is harmless
+          if (p.inStock) {
+            const ok = await confirmAction({
+              title: `Mark "${p.name}" out of stock?`,
+              message: "Cashiers will not be able to sell it until you mark it back in stock.",
+              confirmText: "Yes, out of stock",
+              danger: true,
+            });
+            if (!ok) return;
+          }
+          await updateProduct(id, { inStock: !p.inStock });
+          await draw();
+        } else if (b.dataset.act === "edit") {
+          openForm(p);
+        } else if (b.dataset.act === "del") {
+          const ok = await confirmAction({
+            title: `Delete "${p.name}"?`,
+            message: "It will be removed from the menu for good. Past sales and receipts are not affected.",
+            confirmText: "Yes, delete it",
+            danger: true,
+          });
+          if (!ok) return;
+          await deleteProduct(id);
+          await draw();
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const price = parseFloat(fPrice.value);
+      if (!fName.value.trim() || isNaN(price) || price < 0) return;
+
+      // Changing a price affects every new sale, so ask first
+      if (editing && Math.round(price * 100) !== Math.round(editing.price * 100)) {
+        const ok = await confirmAction({
+          title: "Change the price?",
+          message: `"${editing.name}" will change from ${fmt(editing.price)} to ${fmt(price)} for all new sales.`,
+          confirmText: "Yes, change price",
+        });
+        if (!ok) return;
+      }
+
+      const payload = {
+        name: fName.value.trim(),
+        category: fCategory.value,
+        price,
+        inStock: fStock.checked,
+      };
+
+      fSave.disabled = true;
+      fSave.textContent = "Saving...";
+      try {
+        if (newPhoto) payload.image = await uploadImage(newPhoto);
+        else if (removePhoto) payload.image = null;
+
+        if (fId.value) await updateProduct(Number(fId.value), payload);
+        else await createProduct(payload);
+        dlg.close();
+        await draw();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        fSave.disabled = false;
+        fSave.textContent = "Save";
+      }
+    });
+
+    draw();
+  }
+
+  const s = getSession();
+  if (!s || s.role !== "admin") {
+    document.getElementById("app").innerHTML =
+      '<p class="rounded-2xl bg-mist/20 p-6 font-semibold">This page is for managers only. Log out and sign in with a manager account.</p>';
+  } else {
+    init();
+  }
+</script>

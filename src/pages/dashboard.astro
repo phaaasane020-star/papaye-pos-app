@@ -1,0 +1,106 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+---
+<AppLayout title="Dashboard" crumbs={["Dashboard", "Today"]}>
+  <h1 id="heading" class="mb-5 text-2xl font-bold">Today</h1>
+
+  <div id="tiles" class="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4"></div>
+
+  <div class="mb-6 grid gap-6 lg:grid-cols-2">
+    <section class="rounded-2xl border border-mist/30 bg-white/70 p-5">
+      <h2 class="mb-3 font-bold">By cashier</h2>
+      <table class="w-full text-sm">
+        <thead class="text-left text-mist">
+          <tr><th class="py-2">Cashier</th><th>Bills</th><th>Cash</th><th>MoMo</th><th class="text-right">Total</th></tr>
+        </thead>
+        <tbody id="byCashier"></tbody>
+      </table>
+    </section>
+
+    <section class="rounded-2xl border border-mist/30 bg-white/70 p-5">
+      <h2 class="mb-3 font-bold">Top items</h2>
+      <ul id="topItems" class="space-y-2 text-sm"></ul>
+    </section>
+  </div>
+
+  <section class="rounded-2xl border border-mist/30 bg-white/70 p-5">
+    <h2 class="mb-3 font-bold">Custom items today</h2>
+    <table class="w-full text-sm">
+      <thead class="text-left text-mist">
+        <tr><th class="py-2">Time</th><th>Bill</th><th>Cashier</th><th>Item</th><th>Qty</th><th class="text-right">Charged</th></tr>
+      </thead>
+      <tbody id="customRows"></tbody>
+    </table>
+  </section>
+</AppLayout>
+
+<script>
+  import { getSession } from "../lib/session.js";
+  import { getSales, summarize } from "../lib/sales.js";
+
+  const esc = (s) =>
+    String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const money = (n) => "GH₵ " + Number(n).toFixed(2);
+
+  async function main() {
+    const session = getSession();
+    const isAdmin = session && session.role === "admin";
+    document.getElementById("heading").textContent = isAdmin ? "Today at the branch" : "My shift today";
+
+    let today;
+    try {
+      today = await getSales("today");
+    } catch (e) {
+      document.getElementById("tiles").innerHTML = `<p class="col-span-full font-semibold text-red-600">${esc(e.message)}</p>`;
+      return;
+    }
+
+    // Tiles
+    const t = summarize(today);
+    document.getElementById("tiles").innerHTML = [["Bills", t.count], ["Total sales", money(t.total)], ["Cash", money(t.cash)], ["MoMo", money(t.momo)]]
+      .map(([l, v]) => `<div class="rounded-2xl bg-mist/20 p-4"><div class="text-xs text-mist">${l}</div><div class="mt-1 text-xl font-bold">${v}</div></div>`)
+      .join("");
+
+    // By cashier
+    const groups = {};
+    for (const s of today) (groups[s.cashier] ||= []).push(s);
+    const names = Object.keys(groups);
+    document.getElementById("byCashier").innerHTML = names.length
+      ? names
+          .map((n) => {
+            const x = summarize(groups[n]);
+            return `<tr class="border-t border-mist/20"><td class="py-2 font-semibold">${esc(n)}</td><td>${x.count}</td><td>${money(x.cash)}</td><td>${money(x.momo)}</td><td class="text-right font-bold">${money(x.total)}</td></tr>`;
+          })
+          .join("")
+      : '<tr><td colspan="5" class="py-3 text-mist">No sales yet today.</td></tr>';
+
+    // Top items
+    const qty = {};
+    for (const s of today) for (const i of s.items) qty[i.name] = (qty[i.name] || 0) + i.qty;
+    const top = Object.entries(qty).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    document.getElementById("topItems").innerHTML = top.length
+      ? top.map(([n, q]) => `<li class="flex justify-between"><span>${esc(n)}</span><span class="font-bold">${q}</span></li>`).join("")
+      : '<li class="text-mist">No sales yet today.</li>';
+
+    // Custom items
+    const rows = [];
+    for (const s of today) for (const i of s.items) if (i.custom) rows.push({ s, i });
+    document.getElementById("customRows").innerHTML = rows.length
+      ? rows
+          .map(({ s, i }) => {
+            const changed = i.basePrice != null && Number(i.basePrice) !== Number(i.price);
+            return `<tr class="border-t border-mist/20">
+              <td class="py-2">${new Date(s.time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</td>
+              <td>${esc(s.id)}</td>
+              <td>${esc(s.cashier)}</td>
+              <td class="font-semibold">${esc(i.name)}${changed ? ` <span class="text-xs font-normal text-red-600">(list ${money(i.basePrice)})</span>` : ""}</td>
+              <td>${i.qty}</td>
+              <td class="text-right font-bold">${money(i.qty * i.price)}</td>
+            </tr>`;
+          })
+          .join("")
+      : '<tr><td colspan="6" class="py-3 text-mist">No custom items today.</td></tr>';
+  }
+
+  main();
+</script>

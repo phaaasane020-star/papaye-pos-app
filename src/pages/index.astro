@@ -1,0 +1,724 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { categories } from "../data/menu.js";
+---
+<AppLayout title="Sell" crumbs={["Sell"]}>
+  <div class="flex flex-col items-start gap-6 lg:flex-row">
+    <!-- ================= Menu ================= -->
+    <section class="min-w-0 w-full flex-1 pb-24 lg:pb-0">
+      <div>
+        <h1 class="text-2xl font-bold">Menu</h1>
+        <p class="text-sm text-mist">Tap an item to add it to the order</p>
+      </div>
+
+      <div id="cats" class="no-scrollbar -mx-4 my-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 lg:mx-0 lg:my-5 lg:flex-wrap lg:overflow-visible lg:px-0">
+        <button data-cat="all" class="cat press shrink-0 whitespace-nowrap rounded-xl border border-ink bg-ink px-4 py-2.5 text-sm font-semibold text-paper transition">
+          All
+        </button>
+        {categories.map((c) => (
+          <button data-cat={c.id} class="cat press shrink-0 whitespace-nowrap rounded-xl border border-mist/40 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition hover:border-gold">
+            {c.name}
+          </button>
+        ))}
+      </div>
+
+      <div id="grid" class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3"></div>
+    </section>
+
+    <!-- ================= Current order (side panel on desktop, bottom sheet on phones) ================= -->
+    <aside id="cartPanel" class="sticky top-0 flex max-h-[calc(100vh-8rem)] w-[22rem] shrink-0 flex-col rounded-2xl border border-mist/30 bg-white p-5 xl:w-96">
+      <div class="mb-3 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <h2 class="text-lg font-bold">Current Order</h2>
+          <span id="cartCount" class="grid h-6 min-w-6 place-items-center rounded-full bg-gold px-1.5 text-xs font-bold">0</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <button id="clear" title="Clear order" class="press rounded-lg p-2 text-mist transition hover:bg-red-50 hover:text-red-600">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>
+          </button>
+          <button id="cartClose" type="button" aria-label="Close order" class="press grid h-9 w-9 place-items-center rounded-lg text-mist hover:bg-mist/20 lg:hidden">✕</button>
+        </div>
+      </div>
+
+      <ul id="cart" class="-mx-1 min-h-0 flex-1 divide-y divide-mist/20 overflow-y-auto px-1"></ul>
+
+      <div id="empty" class="py-10 text-center">
+        <svg class="mx-auto text-mist/60" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11h18l-2 9H5z"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <p class="mt-3 text-sm text-mist">No items yet.<br />Tap a menu item to start.</p>
+      </div>
+
+      <button id="customBtn" type="button" class="press mt-3 w-full rounded-xl border border-dashed border-mist/60 py-3 text-sm font-semibold transition hover:border-gold hover:bg-gold/10 lg:py-2.5">+ Custom item</button>
+
+      <div class="mt-4 space-y-1.5 border-t border-mist/30 pt-4 text-sm">
+        <div class="flex justify-between text-mist"><span>Items</span><span id="itemsCount">0</span></div>
+        <div class="flex justify-between text-mist"><span>Subtotal</span><span id="subtotal">GH₵ 0.00</span></div>
+        <div class="flex items-center justify-between pt-1 text-lg font-bold"><span>Total</span><span id="total" class="text-xl">GH₵ 0.00</span></div>
+      </div>
+
+      <button id="checkout" class="btn-gold mt-4 w-full rounded-xl py-3.5 text-base font-bold text-ink disabled:opacity-50" disabled>
+        Checkout
+      </button>
+    </aside>
+  </div>
+
+  <!-- Phone only: dark overlay behind the cart sheet + floating "view order" bar -->
+  <div id="cartScrim"></div>
+  <div id="cartBar" class="hidden lg:hidden">
+    <button id="cartOpen" type="button" class="btn-gold flex w-full items-center justify-between rounded-xl px-5 py-3.5 text-ink shadow-lift">
+      <span class="flex items-center gap-2 font-bold">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11h18l-2 9H5z"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <span id="barCount" class="grid h-6 min-w-6 place-items-center rounded-full bg-ink px-1.5 text-xs font-bold text-paper">0</span>
+        <span class="text-sm">View order</span>
+      </span>
+      <span id="barTotal" class="text-base font-extrabold">GH₵ 0.00</span>
+    </button>
+  </div>
+
+  <!-- ================= Checkout pop-up ================= -->
+  <dialog id="pay" class="m-auto w-[34rem] max-w-[94vw] rounded-2xl bg-paper p-5 text-ink sm:p-6">
+    <div class="mb-4 flex items-center justify-between">
+      <h2 class="text-xl font-bold">Checkout</h2>
+      <button id="cancelPay" type="button" class="press rounded-lg p-2 text-mist transition hover:bg-mist/20 hover:text-ink" aria-label="Close">✕</button>
+    </div>
+
+    <!-- Order summary -->
+    <div class="rounded-xl border border-mist/30 bg-white p-4">
+      <div class="mb-1 text-xs font-semibold uppercase tracking-wider text-mist">Order summary</div>
+      <ul id="paySummary" class="max-h-48 divide-y divide-mist/15 overflow-y-auto"></ul>
+      <div class="mt-3 space-y-1 border-t border-mist/30 pt-3 text-sm">
+        <div class="flex justify-between text-mist"><span>Subtotal</span><span id="paySubtotal">GH₵ 0.00</span></div>
+        <div class="flex items-center justify-between text-lg font-bold"><span>Total amount</span><span id="due" class="text-2xl">GH₵ 0.00</span></div>
+      </div>
+    </div>
+
+    <!-- Payment method -->
+    <div class="mb-2 mt-5 text-xs font-semibold uppercase tracking-wider text-mist">Payment method</div>
+    <div class="grid grid-cols-2 gap-3">
+      <button type="button" data-method="cash" class="method press flex items-center gap-3 rounded-xl border-2 border-gold bg-gold/15 p-3 text-left transition">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg>
+        </span>
+        <span><span class="block font-bold">Cash</span><span class="block text-xs text-mist">Pay at counter</span></span>
+      </button>
+      <button type="button" data-method="momo" class="method press flex items-center gap-3 rounded-xl border-2 border-mist/30 bg-white p-3 text-left transition">
+        <span class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
+        </span>
+        <span><span class="block font-bold">MoMo</span><span class="block text-xs text-mist">Mobile Money</span></span>
+      </button>
+    </div>
+
+    <!-- Cash -->
+    <div id="cashBox" class="mt-5">
+      <label for="tendered" class="text-sm font-semibold">Cash received</label>
+      <input
+        id="tendered"
+        type="number"
+        min="0"
+        step="0.01"
+        inputmode="decimal"
+        placeholder="0.00"
+        class="mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-3 text-xl font-semibold outline-none transition focus:border-gold"
+      />
+      <div id="quick" class="mt-2 flex flex-wrap gap-2"></div>
+
+      <div class="mt-3 flex items-center justify-between rounded-xl bg-gold/20 px-4 py-3">
+        <span class="font-semibold">Change due</span>
+        <span id="change" class="text-2xl font-extrabold">GH₵ 0.00</span>
+      </div>
+      <p id="short" class="mt-2 hidden text-sm font-semibold text-red-600"></p>
+    </div>
+
+    <p id="momoNote" class="mt-5 hidden rounded-xl bg-mist/20 px-4 py-3 text-sm">
+      Confirm the Mobile Money payment has been received before completing the sale.
+    </p>
+
+    <button id="confirmPay" type="button" class="btn-gold mt-5 w-full rounded-xl py-3.5 text-base font-bold text-ink disabled:opacity-50" disabled>
+      <span id="confirmLabel">Complete sale</span>
+    </button>
+  </dialog>
+
+  <!-- ================= Payment successful ================= -->
+  <dialog id="done" class="m-auto max-h-[94vh] w-[52rem] max-w-[94vw] overflow-hidden rounded-2xl bg-paper p-0 text-ink">
+    <div class="grid max-h-[94vh] md:grid-cols-[1fr_auto]">
+      <div class="overflow-y-auto p-5 sm:p-7">
+        <div class="flex items-center gap-4">
+          <div class="shrink-0">
+            <svg viewBox="0 0 52 52" width="56" height="56">
+              <circle class="check-circle" cx="26" cy="26" r="25" fill="none" stroke="#FFBB00" stroke-width="3" />
+              <path class="check-mark" fill="none" stroke="#474150" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" d="M14 27l8 8 16-17" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-2xl font-bold">Payment Successful</h2>
+            <p id="doneId" class="font-mono text-xs text-mist"></p>
+          </div>
+        </div>
+
+        <div class="mt-6 rounded-xl border border-mist/30 bg-white p-5">
+          <p class="text-xs font-semibold uppercase tracking-wider text-mist">Total amount paid</p>
+          <p id="doneTotal" class="mt-1 text-4xl font-extrabold">GH₵ 0.00</p>
+          <div class="mt-4 space-y-1.5 text-sm">
+            <div class="flex justify-between"><span class="text-mist">Paid by</span><span id="doneMethod" class="font-semibold"></span></div>
+            <div id="doneCash" class="space-y-1.5">
+              <div class="flex justify-between"><span class="text-mist">Amount received</span><span id="doneGiven" class="font-semibold"></span></div>
+              <div class="flex justify-between"><span class="text-mist">Change due</span><span id="doneChange" class="text-lg font-extrabold"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 space-y-2 text-sm">
+          <label class="flex items-center gap-2">
+            <input id="autoPrint" type="checkbox" class="h-4 w-4 accent-[#FFBB00]" />
+            Print receipt automatically
+          </label>
+          <div class="flex items-center gap-2">
+            <span class="text-mist">Paper</span>
+            <select id="paperWidth" class="rounded-lg border border-mist/40 bg-white px-2 py-1 text-sm outline-none focus:border-gold">
+              <option value="80mm">80 mm roll</option>
+              <option value="58mm">58 mm roll</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3">
+          <button id="newOrder" type="button" class="press rounded-xl bg-mist/20 py-3.5 font-semibold transition hover:bg-mist/30">New Order</button>
+          <button id="printBtn" type="button" class="btn-gold flex items-center justify-center gap-2 rounded-xl py-3.5 font-bold text-ink">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
+            Print Receipt
+          </button>
+        </div>
+      </div>
+
+      <!-- Receipt preview -->
+      <div class="overflow-y-auto bg-ink/5 p-5 sm:p-7 md:w-[24rem]">
+        <p class="mb-3 text-center text-xs font-semibold uppercase tracking-wider text-mist">Receipt preview</p>
+        <div class="print-slot flex justify-center">
+          <div class="paper-shadow">
+            <div class="torn">
+              <iframe id="receiptFrame" scrolling="no" title="Receipt preview" class="block border-0 bg-white"></iframe>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ================= Custom item pop-up ================= -->
+  <dialog id="custom" class="m-auto w-[26rem] max-w-[94vw] rounded-2xl bg-paper p-5 text-ink sm:p-6">
+    <form id="customForm">
+      <h2 class="mb-4 text-lg font-bold">Custom item</h2>
+
+      <label for="cCategory" class="text-sm font-semibold">Category</label>
+      <select id="cCategory" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold"></select>
+
+      <label for="cItem" class="text-sm font-semibold">Item</label>
+      <select id="cItem" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold"></select>
+
+      <div id="cNameBox" class="hidden">
+        <label for="cName" class="text-sm font-semibold">Item name</label>
+        <input id="cName" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+      </div>
+
+      <div class="mb-5 grid grid-cols-2 gap-3">
+        <div>
+          <label for="cPrice" class="text-sm font-semibold">Price (GH₵)</label>
+          <input id="cPrice" type="number" min="0" step="0.01" required inputmode="decimal" class="mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+        </div>
+        <div>
+          <label for="cQty" class="text-sm font-semibold">Quantity</label>
+          <input id="cQty" type="number" min="1" step="1" value="1" required class="mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        <button id="customCancel" type="button" class="press flex-1 rounded-xl bg-mist/20 py-3 font-semibold">Cancel</button>
+        <button type="submit" class="btn-gold flex-1 rounded-xl py-3 font-bold">Add to order</button>
+      </div>
+    </form>
+  </dialog>
+</AppLayout>
+
+<script>
+  import { printReceipt, mountPreview, getPaperWidth, setPaperWidth } from "../lib/receipt.js";
+  import { categories, getProducts } from "../lib/products.js";
+  import { api } from "../lib/client-api.js";
+  import { confirmAction } from "../lib/confirm.js";
+
+  const fmt = (n) => "GH₵ " + Number(n).toFixed(2);
+  const esc = (s) =>
+    String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const $ = (id) => document.getElementById(id);
+
+  const TRASH =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
+
+  // Neutral picture area used until a food has its own photo
+  const PLACEHOLDER =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v7a2 2 0 0 0 2 2v9M5 3v5M9 3v5"/><path d="M17 3c-2 2-3 4.5-3 8h3v10"/></svg>';
+
+  const cart = new Map(); // id -> { id, name, price, qty, category, custom?, basePrice?, productId? }
+  const cartEl = $("cart");
+  const emptyEl = $("empty");
+  const grid = $("grid");
+  const checkoutEl = $("checkout");
+  const cartBar = $("cartBar");
+
+  const cents = (n) => Math.round(n * 100);
+  const cartTotal = () => [...cart.values()].reduce((s, i) => s + cents(i.price) * i.qty, 0) / 100;
+
+  // ---------- Phone: open / close the cart sheet ----------
+  const openCart = () => document.body.classList.add("cart-open");
+  const closeCart = () => document.body.classList.remove("cart-open");
+  $("cartOpen").addEventListener("click", openCart);
+  $("cartClose").addEventListener("click", closeCart);
+  $("cartScrim").addEventListener("click", closeCart);
+
+  // ---------- Menu ----------
+  let products = [];
+  let currentCat = "all";
+  let query = "";
+
+  async function loadProducts() {
+    grid.innerHTML = Array.from({ length: 6 })
+      .map(() => '<div class="h-44 animate-pulse rounded-2xl bg-white/70"></div>')
+      .join("");
+    try {
+      products = await getProducts();
+      renderProducts();
+    } catch (e) {
+      grid.innerHTML = `<p class="col-span-full text-sm font-semibold text-red-600">Could not load the menu. ${esc(e.message)}</p>`;
+    }
+  }
+
+  function renderProducts() {
+    const q = query.trim().toLowerCase();
+    const list = products.filter(
+      (p) => (currentCat === "all" || p.category === currentCat) && (!q || p.name.toLowerCase().includes(q))
+    );
+
+    if (list.length === 0) {
+      grid.innerHTML =
+        '<div class="col-span-full rounded-xl border border-mist/30 bg-white p-8 text-center text-sm text-mist">Nothing found. Try another category or search.</div>';
+      return;
+    }
+
+    grid.innerHTML = list
+      .map(
+        (p) => `
+      <button
+        class="product relative flex flex-col overflow-hidden rounded-2xl border border-mist/30 bg-white text-left card-lift ${p.inStock ? "" : "grayscale"} disabled:cursor-not-allowed disabled:opacity-55"
+        data-id="${p.id}" data-cat="${esc(p.category)}" data-name="${esc(p.name)}" data-price="${p.price}" ${p.inStock ? "" : "disabled"}
+      >
+        <span class="qty-badge absolute right-2 top-2 z-10 grid h-6 min-w-6 scale-0 place-items-center rounded-full bg-ink px-1.5 text-xs font-bold text-paper opacity-0 transition duration-150"></span>
+        ${
+          p.image
+            ? `<img src="${esc(p.image)}" alt="" loading="lazy" class="h-24 w-full object-cover sm:h-28" />`
+            : `<span class="grid h-24 w-full place-items-center bg-paper text-mist sm:h-28">${PLACEHOLDER}</span>`
+        }
+        <span class="flex flex-1 flex-col justify-between gap-2 p-3">
+          <span class="block text-[14px] font-semibold leading-tight">${esc(p.name)}</span>
+          <span class="flex items-center justify-between">
+            <span class="text-sm font-bold ${p.inStock ? "" : "text-mist"}">${p.inStock ? fmt(p.price) : "Out of stock"}</span>
+            ${p.inStock ? '<span class="grid h-7 w-7 place-items-center rounded-full bg-gold text-base font-bold text-ink">+</span>' : ""}
+          </span>
+        </span>
+      </button>`
+      )
+      .join("");
+
+    syncBadges();
+  }
+
+  function syncBadges() {
+    grid.querySelectorAll(".product").forEach((b) => {
+      const badge = b.querySelector(".qty-badge");
+      if (!badge) return;
+      const item = cart.get(Number(b.dataset.id));
+      badge.textContent = item ? item.qty : "";
+      badge.classList.toggle("scale-0", !item);
+      badge.classList.toggle("opacity-0", !item);
+      badge.classList.toggle("scale-100", Boolean(item));
+      badge.classList.toggle("opacity-100", Boolean(item));
+    });
+  }
+
+  grid.addEventListener("click", (e) => {
+    const btn = e.target.closest(".product");
+    if (!btn || btn.disabled) return;
+    const id = Number(btn.dataset.id);
+    const existing = cart.get(id);
+    if (existing) existing.qty++;
+    else cart.set(id, { id, name: btn.dataset.name, price: Number(btn.dataset.price), qty: 1, category: btn.dataset.cat });
+
+    render();
+
+    const badge = btn.querySelector(".qty-badge");
+    if (badge) {
+      badge.classList.remove("bump");
+      void badge.offsetWidth;
+      badge.classList.add("bump");
+    }
+  });
+
+  // Category chips
+  document.querySelectorAll(".cat").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentCat = btn.dataset.cat;
+      document.querySelectorAll(".cat").forEach((b) => {
+        const on = b === btn;
+        b.classList.toggle("bg-ink", on);
+        b.classList.toggle("border-ink", on);
+        b.classList.toggle("text-paper", on);
+        b.classList.toggle("bg-white", !on);
+        b.classList.toggle("border-mist/40", !on);
+        b.classList.toggle("text-ink", !on);
+      });
+      renderProducts();
+    });
+  });
+
+  // Search box in the top bar
+  const search = $("globalSearch");
+  if (search) {
+    search.placeholder = "Search menu...";
+    search.addEventListener("input", () => {
+      query = search.value;
+      renderProducts();
+    });
+  }
+
+  // ---------- Cart ----------
+  let prevCount = 0;
+
+  function render() {
+    const total = cartTotal();
+    let count = 0;
+    cartEl.innerHTML = "";
+
+    for (const item of cart.values()) {
+      count += item.qty;
+      const li = document.createElement("li");
+      li.className = "flex items-center gap-3 py-3";
+      li.innerHTML = `
+        <div class="min-w-0 flex-1">
+          <div class="truncate text-sm font-semibold">${esc(item.name)}${item.custom ? ' <span class="rounded bg-gold px-1 text-[10px] font-bold">CUSTOM</span>' : ""}</div>
+          <div class="text-xs text-mist">${fmt(item.price)} each</div>
+          <div class="mt-1.5 inline-flex items-center overflow-hidden rounded-lg border border-mist/30">
+            <button data-act="dec" data-id="${item.id}" class="press h-9 w-9 font-bold transition hover:bg-mist/20 lg:h-7 lg:w-7">−</button>
+            <span class="w-8 text-center text-sm font-semibold lg:w-7">${item.qty}</span>
+            <button data-act="inc" data-id="${item.id}" class="press h-9 w-9 bg-gold font-bold transition hover:brightness-95 lg:h-7 lg:w-7">+</button>
+          </div>
+        </div>
+        <div class="flex flex-col items-end justify-between gap-2 self-stretch">
+          <button data-act="del" data-id="${item.id}" class="rounded-md p-1.5 text-mist transition hover:bg-red-50 hover:text-red-600" aria-label="Remove ${esc(item.name)}">${TRASH}</button>
+          <div class="text-sm font-bold">${fmt(item.price * item.qty)}</div>
+        </div>`;
+      cartEl.appendChild(li);
+    }
+
+    emptyEl.classList.toggle("hidden", cart.size > 0);
+    $("itemsCount").textContent = count;
+    $("subtotal").textContent = fmt(total);
+    $("total").textContent = fmt(total);
+    checkoutEl.disabled = cart.size === 0;
+
+    // Floating bar (phones)
+    $("barCount").textContent = count;
+    $("barTotal").textContent = fmt(total);
+    cartBar.classList.toggle("hidden", cart.size === 0);
+    if (cart.size === 0) closeCart();
+
+    const badge = $("cartCount");
+    badge.textContent = count;
+    if (count !== prevCount) {
+      badge.classList.remove("bump");
+      void badge.offsetWidth;
+      badge.classList.add("bump");
+    }
+    prevCount = count;
+
+    syncBadges();
+  }
+
+  cartEl.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-act]");
+    if (!b) return;
+    const item = cart.get(Number(b.dataset.id));
+    if (!item) return;
+    if (b.dataset.act === "del") cart.delete(item.id);
+    else {
+      item.qty += b.dataset.act === "inc" ? 1 : -1;
+      if (item.qty <= 0) cart.delete(item.id);
+    }
+    render();
+  });
+
+  $("clear").addEventListener("click", async () => {
+    if (cart.size === 0) return;
+    const ok = await confirmAction({
+      title: "Clear this order?",
+      message: "All items in the current order will be removed.",
+      confirmText: "Yes, clear it",
+      danger: true,
+    });
+    if (!ok) return;
+    cart.clear();
+    render();
+  });
+
+  // ---------- Checkout ----------
+  const pay = $("pay");
+  const tenderedEl = $("tendered");
+  const changeEl = $("change");
+  const confirmEl = $("confirmPay");
+  let method = "cash";
+  let saving = false;
+
+  function buildQuick() {
+    const due = cartTotal();
+    const set = new Set([due]);
+    for (const d of [10, 20, 50, 100, 200]) if (d >= due) set.add(d);
+    set.add(Math.ceil(due / 10) * 10);
+    const list = [...set].sort((a, b) => a - b).slice(0, 5);
+    $("quick").innerHTML = list
+      .map(
+        (a) =>
+          `<button type="button" data-amt="${a}" class="press rounded-lg border border-mist/30 bg-white px-3 py-2 text-sm font-semibold transition hover:border-gold hover:bg-gold/20">${a === due ? "Exact" : fmt(a)}</button>`
+      )
+      .join("");
+  }
+
+  function updatePay() {
+    const isCash = method === "cash";
+    const dueC = cents(cartTotal());
+    const given = cents(parseFloat(tenderedEl.value) || 0);
+
+    $("cashBox").classList.toggle("hidden", !isCash);
+    $("momoNote").classList.toggle("hidden", isCash);
+
+    const changeText = fmt(Math.max(0, given - dueC) / 100);
+    if (changeEl.textContent !== changeText) {
+      changeEl.textContent = changeText;
+    }
+
+    const short = isCash && given < dueC;
+    const shortEl = $("short");
+    if (short && given > 0) {
+      shortEl.textContent = `${fmt((dueC - given) / 100)} still to pay`;
+      shortEl.classList.remove("hidden");
+    } else {
+      shortEl.classList.add("hidden");
+    }
+
+    confirmEl.disabled = saving || short;
+    $("confirmLabel").textContent = saving ? "Saving..." : `Complete sale · ${fmt(dueC / 100)}`;
+
+    document.querySelectorAll(".method").forEach((b) => {
+      const on = b.dataset.method === method;
+      for (const c of ["border-gold", "bg-gold/15"]) b.classList.toggle(c, on);
+      for (const c of ["border-mist/30", "bg-white"]) b.classList.toggle(c, !on);
+    });
+  }
+
+  checkoutEl.addEventListener("click", () => {
+    method = "cash";
+    saving = false;
+    tenderedEl.value = "";
+    const total = cartTotal();
+    closeCart();
+
+    $("paySummary").innerHTML = [...cart.values()]
+      .map(
+        (i) => `
+      <li class="flex items-center gap-3 py-2">
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-sm font-semibold">${esc(i.name)}</span>
+          <span class="text-xs text-mist">${i.qty} × ${fmt(i.price)}</span>
+        </span>
+        <span class="text-sm font-bold">${fmt(i.qty * i.price)}</span>
+      </li>`
+      )
+      .join("");
+    $("paySubtotal").textContent = fmt(total);
+    $("due").textContent = fmt(total);
+
+    buildQuick();
+    updatePay();
+    pay.showModal();
+    tenderedEl.focus();
+  });
+
+  $("quick").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-amt]");
+    if (!b) return;
+    tenderedEl.value = b.dataset.amt;
+    updatePay();
+  });
+
+  document.querySelectorAll(".method").forEach((b) =>
+    b.addEventListener("click", () => {
+      method = b.dataset.method;
+      updatePay();
+    })
+  );
+
+  tenderedEl.addEventListener("input", updatePay);
+  $("cancelPay").addEventListener("click", () => pay.close());
+
+  confirmEl.addEventListener("click", async () => {
+    saving = true;
+    updatePay();
+
+    try {
+      const { sale } = await api("/api/sales", {
+        method: "POST",
+        body: {
+          method,
+          tendered: method === "cash" ? parseFloat(tenderedEl.value) : null,
+          items: [...cart.values()].map((i) =>
+            i.custom
+              ? { custom: true, productId: i.productId ?? null, name: i.name, price: i.price, qty: i.qty }
+              : { productId: i.id, qty: i.qty }
+          ),
+        },
+      });
+
+      cart.clear();
+      render();
+      saving = false;
+      pay.close();
+      showDone(sale);
+    } catch (e) {
+      saving = false;
+      alert("Sale not saved: " + e.message);
+      loadProducts(); // refresh stock in case that was the problem
+    } finally {
+      saving = false;
+      updatePay();
+    }
+  });
+
+  // ---------- Payment successful + receipt ----------
+  const done = $("done");
+  const frame = $("receiptFrame");
+  const autoPrintEl = $("autoPrint");
+  const paperEl = $("paperWidth");
+  let lastSale = null;
+
+  try {
+    autoPrintEl.checked = localStorage.getItem("papaye_autoprint") !== "0";
+  } catch {
+    autoPrintEl.checked = true;
+  }
+  paperEl.value = getPaperWidth();
+
+  function showDone(sale) {
+    lastSale = sale;
+    const isCash = sale.method === "cash";
+
+    $("doneId").textContent = sale.id;
+    $("doneTotal").textContent = fmt(sale.total);
+    $("doneMethod").textContent = isCash ? "Cash" : "Mobile Money";
+    $("doneCash").classList.toggle("hidden", !isCash);
+    $("doneGiven").textContent = fmt(sale.tendered);
+    $("doneChange").textContent = fmt(sale.change);
+
+    paperEl.value = getPaperWidth();
+    mountPreview(frame, sale, getPaperWidth());
+    done.showModal();
+
+    if (autoPrintEl.checked) setTimeout(() => printReceipt(sale), 900);
+  }
+
+  autoPrintEl.addEventListener("change", () => {
+    try {
+      localStorage.setItem("papaye_autoprint", autoPrintEl.checked ? "1" : "0");
+    } catch {}
+  });
+
+  paperEl.addEventListener("change", () => {
+    setPaperWidth(paperEl.value);
+    if (lastSale) mountPreview(frame, lastSale, getPaperWidth());
+  });
+
+  $("printBtn").addEventListener("click", () => {
+    if (lastSale) printReceipt(lastSale);
+  });
+  $("newOrder").addEventListener("click", () => done.close());
+  done.addEventListener("close", () => loadProducts()); // refresh stock for the next order
+
+  // ---------- Custom item (category -> item list) ----------
+  const customDlg = $("custom");
+  const customForm = $("customForm");
+  const cCategory = $("cCategory");
+  const cItem = $("cItem");
+  const cNameBox = $("cNameBox");
+  const cName = $("cName");
+  const cPrice = $("cPrice");
+  const cQty = $("cQty");
+
+  const customCats = [...categories, { id: "other", name: "Other" }];
+
+  function fillItems() {
+    const cat = cCategory.value;
+    const list = cat === "other" ? [] : products.filter((p) => p.category === cat);
+    cItem.innerHTML =
+      list.map((p) => `<option value="${p.id}">${esc(p.name)} (${fmt(p.price)})</option>`).join("") +
+      '<option value="other">Other (type a name)</option>';
+    onItemChange();
+  }
+
+  function onItemChange() {
+    const isOther = cItem.value === "other";
+    cNameBox.classList.toggle("hidden", !isOther);
+    cName.required = isOther;
+    if (isOther) {
+      cPrice.value = "";
+    } else {
+      const p = products.find((x) => x.id === Number(cItem.value));
+      cPrice.value = p ? p.price : "";
+    }
+  }
+
+  $("customBtn").addEventListener("click", () => {
+    customForm.reset();
+    cCategory.innerHTML = customCats.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+    cQty.value = 1;
+    fillItems();
+    customDlg.showModal();
+  });
+
+  cCategory.addEventListener("change", fillItems);
+  cItem.addEventListener("change", onItemChange);
+  $("customCancel").addEventListener("click", () => customDlg.close());
+
+  customForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const price = parseFloat(cPrice.value);
+    const qty = parseInt(cQty.value, 10) || 1;
+    if (isNaN(price) || price < 0) return;
+
+    let name;
+    let basePrice = null;
+    let productId = null;
+    if (cItem.value === "other") {
+      name = cName.value.trim();
+      if (!name) return;
+    } else {
+      const p = products.find((x) => x.id === Number(cItem.value));
+      if (!p) return;
+      name = p.name;
+      basePrice = p.price;
+      productId = p.id;
+    }
+
+    const id = -Date.now(); // negative id = custom item
+    cart.set(id, { id, name, price, qty, custom: true, basePrice, productId, category: cCategory.value });
+    render();
+    customDlg.close();
+  });
+
+  loadProducts();
+  render();
+</script>

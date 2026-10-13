@@ -1,0 +1,197 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+---
+<AppLayout title="Staff" crumbs={["Staff", "Manage team"]}>
+  <div id="app">
+    <div class="mb-5 flex items-center justify-between">
+      <h1 class="text-2xl font-bold">Staff</h1>
+      <button id="addBtn" class="rounded-xl bg-gold px-5 py-2.5 font-bold text-ink">+ Add staff</button>
+    </div>
+
+    <div class="overflow-x-auto rounded-2xl border border-mist/30 bg-white/70">
+      <table class="w-full text-sm">
+        <thead class="bg-mist/20 text-left">
+          <tr>
+            <th class="px-4 py-3">Name</th>
+            <th class="px-4 py-3">Username</th>
+            <th class="px-4 py-3">Role</th>
+            <th class="px-4 py-3">Phone</th>
+            <th class="px-4 py-3">Authenticator</th>
+            <th class="px-4 py-3">Status</th>
+            <th class="px-4 py-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Add / edit pop-up -->
+  <dialog id="form" class="m-auto w-[26rem] max-w-[92vw] rounded-2xl bg-paper p-6 text-ink backdrop:bg-ink/60">
+    <form id="staffForm">
+      <h2 id="formTitle" class="mb-4 text-lg font-bold">Add staff</h2>
+      <input type="hidden" id="sId" />
+
+      <label for="sName" class="text-sm font-semibold">Full name</label>
+      <input id="sName" required class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+
+      <label for="sUsername" class="text-sm font-semibold">Username</label>
+      <input id="sUsername" autocomplete="off" placeholder="letters, numbers, underscore" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold disabled:opacity-60" />
+
+      <label for="sRole" class="text-sm font-semibold">Role</label>
+      <select id="sRole" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold">
+        <option value="cashier">Cashier</option>
+        <option value="admin">Manager</option>
+      </select>
+
+      <label for="sPhone" class="text-sm font-semibold">Phone number</label>
+      <input id="sPhone" type="tel" required class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+
+      <label for="sPin" id="pinLabel" class="text-sm font-semibold">PIN (4 to 6 digits)</label>
+      <input id="sPin" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" class="mb-5 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+
+      <p id="formError" class="mb-3 hidden text-sm font-semibold text-red-600"></p>
+
+      <div class="flex gap-2">
+        <button id="sCancel" type="button" class="flex-1 rounded-xl bg-mist/20 py-3 font-semibold">Cancel</button>
+        <button type="submit" class="flex-1 rounded-xl bg-gold py-3 font-bold">Save</button>
+      </div>
+    </form>
+  </dialog>
+</AppLayout>
+
+<script>
+  import { getSession } from "../lib/session.js";
+  import { getStaff, createStaff, updateStaff } from "../lib/staff.js";
+
+  const esc = (s) =>
+    String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function init() {
+    const rows = document.getElementById("rows");
+    const dlg = document.getElementById("form");
+    const form = document.getElementById("staffForm");
+    const sId = document.getElementById("sId");
+    const sName = document.getElementById("sName");
+    const sUsername = document.getElementById("sUsername");
+    const sRole = document.getElementById("sRole");
+    const sPhone = document.getElementById("sPhone");
+    const sPin = document.getElementById("sPin");
+    const pinLabel = document.getElementById("pinLabel");
+    const formTitle = document.getElementById("formTitle");
+    const formError = document.getElementById("formError");
+    let list = [];
+
+    async function draw() {
+      try {
+        list = await getStaff();
+      } catch (e) {
+        rows.innerHTML = `<tr><td colspan="7" class="px-4 py-3 font-semibold text-red-600">${esc(e.message)}</td></tr>`;
+        return;
+      }
+
+      rows.innerHTML = list
+        .map(
+          (m) => `
+        <tr class="border-t border-mist/20 ${m.active ? "" : "opacity-50"}">
+          <td class="px-4 py-3 font-semibold">${esc(m.name)}</td>
+          <td class="px-4 py-3">${esc(m.username)}</td>
+          <td class="px-4 py-3">${m.role === "admin" ? "Manager" : "Cashier"}</td>
+          <td class="px-4 py-3">${esc(m.phone)}</td>
+          <td class="px-4 py-3">${m.totpEnabled ? "Set up" : '<span class="text-mist">Not yet</span>'}</td>
+          <td class="px-4 py-3">${!m.active ? "Inactive" : m.locked ? '<span class="font-semibold text-red-600">Locked</span>' : "Active"}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-right">
+            <button data-act="edit" data-id="${m.id}" class="mr-3 font-semibold underline">Edit</button>
+            ${m.locked ? `<button data-act="unlock" data-id="${m.id}" class="mr-3 font-semibold underline">Unlock</button>` : ""}
+            ${m.totpEnabled ? `<button data-act="reset" data-id="${m.id}" class="mr-3 font-semibold underline">Reset authenticator</button>` : ""}
+            <button data-act="toggle" data-id="${m.id}" class="font-semibold ${m.active ? "text-red-600" : ""} underline">${m.active ? "Deactivate" : "Activate"}</button>
+          </td>
+        </tr>`
+        )
+        .join("");
+    }
+
+    function openForm(m) {
+      formError.classList.add("hidden");
+      formTitle.textContent = m ? "Edit staff" : "Add staff";
+      sId.value = m ? m.id : "";
+      sName.value = m ? m.name : "";
+      sUsername.value = m ? m.username : "";
+      sUsername.disabled = Boolean(m);
+      sRole.value = m ? m.role : "cashier";
+      sPhone.value = m ? m.phone : "";
+      sPin.value = "";
+      pinLabel.textContent = m ? "New PIN (leave empty to keep the current one)" : "PIN (4 to 6 digits)";
+      sPin.required = !m;
+      dlg.showModal();
+      sName.focus();
+    }
+
+    document.getElementById("addBtn").addEventListener("click", () => openForm(null));
+    document.getElementById("sCancel").addEventListener("click", () => dlg.close());
+
+    rows.addEventListener("click", async (e) => {
+      const b = e.target.closest("button[data-act]");
+      if (!b) return;
+      const id = Number(b.dataset.id);
+      const m = list.find((x) => x.id === id);
+      if (!m) return;
+
+      try {
+        if (b.dataset.act === "edit") {
+          openForm(m);
+          return;
+        }
+        if (b.dataset.act === "unlock") {
+          await updateStaff(id, { unlock: true });
+        } else if (b.dataset.act === "reset") {
+          if (!confirm(`Reset the authenticator for ${m.name}? They will set it up again at their next login.`)) return;
+          await updateStaff(id, { resetAuthenticator: true });
+        } else if (b.dataset.act === "toggle") {
+          const verb = m.active ? "Deactivate" : "Activate";
+          if (!confirm(`${verb} ${m.name}?`)) return;
+          await updateStaff(id, { active: !m.active });
+        }
+        await draw();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      formError.classList.add("hidden");
+
+      try {
+        if (sId.value) {
+          const changes = { name: sName.value, role: sRole.value, phone: sPhone.value };
+          if (sPin.value) changes.pin = sPin.value;
+          await updateStaff(Number(sId.value), changes);
+        } else {
+          await createStaff({
+            name: sName.value,
+            username: sUsername.value,
+            role: sRole.value,
+            phone: sPhone.value,
+            pin: sPin.value,
+          });
+        }
+        dlg.close();
+        await draw();
+      } catch (err) {
+        formError.textContent = err.message;
+        formError.classList.remove("hidden");
+      }
+    });
+
+    draw();
+  }
+
+  const s = getSession();
+  if (!s || s.role !== "admin") {
+    document.getElementById("app").innerHTML =
+      '<p class="rounded-2xl bg-mist/20 p-6 font-semibold">This page is for managers only.</p>';
+  } else {
+    init();
+  }
+</script>

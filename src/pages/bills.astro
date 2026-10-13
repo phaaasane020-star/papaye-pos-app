@@ -1,0 +1,119 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+---
+<AppLayout title="Bills" crumbs={["Bills", "Sales history"]}>
+  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl font-bold">Bills</h1>
+    <div class="flex items-center gap-4">
+      <label class="flex items-center gap-2 text-sm font-semibold">
+        <input id="customOnly" type="checkbox" class="h-4 w-4 accent-[#FFBB00]" />
+        Custom orders only
+      </label>
+      <select id="range" class="rounded-xl border border-mist/40 bg-white px-3 py-2 text-sm">
+        <option value="today">Today</option>
+        <option value="all">All time</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="tiles" class="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4"></div>
+
+  <div class="flex items-start gap-6">
+    <ul id="list" class="flex-1 space-y-2"></ul>
+    <aside id="detail" class="sticky top-0 w-80 shrink-0 rounded-2xl border border-mist/30 bg-white/70 p-5 text-sm">
+      <p class="text-mist">Select a bill to see its details.</p>
+    </aside>
+  </div>
+</AppLayout>
+
+<script>
+  import { getSales, summarize } from "../lib/sales.js";
+  import { printReceipt } from "../lib/receipt.js";
+
+  const RECEIPT_WIDTH = "80mm";
+  const esc = (s) =>
+    String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const money = (n) => "GH₵ " + Number(n).toFixed(2);
+  const timeOf = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const hasCustom = (s) => s.items.some((i) => i.custom);
+  const badge = '<span class="ml-2 rounded-md bg-gold px-1.5 py-0.5 text-[10px] font-bold">CUSTOM</span>';
+
+  const rangeEl = document.getElementById("range");
+  const customOnlyEl = document.getElementById("customOnly");
+  const tiles = document.getElementById("tiles");
+  const list = document.getElementById("list");
+  const detail = document.getElementById("detail");
+  let shown = [];
+
+  async function load() {
+    list.innerHTML = '<li class="text-sm text-mist">Loading...</li>';
+    detail.innerHTML = '<p class="text-mist">Select a bill to see its details.</p>';
+
+    let sales;
+    try {
+      sales = await getSales(rangeEl.value);
+    } catch (e) {
+      list.innerHTML = `<li class="text-sm font-semibold text-red-600">${esc(e.message)}</li>`;
+      return;
+    }
+
+    shown = customOnlyEl.checked ? sales.filter(hasCustom) : sales;
+
+    const t = summarize(shown);
+    tiles.innerHTML = [["Bills", t.count], ["Total", money(t.total)], ["Cash", money(t.cash)], ["MoMo", money(t.momo)]]
+      .map(([l, v]) => `<div class="rounded-2xl bg-mist/20 p-4"><div class="text-xs text-mist">${l}</div><div class="mt-1 text-xl font-bold">${v}</div></div>`)
+      .join("");
+
+    list.innerHTML = shown.length
+      ? shown
+          .map(
+            (s) => `
+        <li>
+          <button data-id="${esc(s.id)}" class="flex w-full items-center justify-between rounded-xl border border-mist/30 bg-white/70 px-4 py-3 text-left hover:border-gold">
+            <span>
+              <span class="font-semibold">${esc(s.id)}</span>${hasCustom(s) ? badge : ""}
+              <span class="block text-xs text-mist">${timeOf(s.time)} · ${esc(s.cashier)} · ${s.method === "cash" ? "Cash" : "MoMo"}</span>
+            </span>
+            <span class="font-bold">${money(s.total)}</span>
+          </button>
+        </li>`
+          )
+          .join("")
+      : '<li class="text-sm text-mist">No bills found.</li>';
+  }
+
+  function itemLine(i) {
+    const changed = i.custom && i.basePrice != null && Number(i.basePrice) !== Number(i.price);
+    return `
+      <li>
+        <div class="flex justify-between">
+          <span>${i.qty} × ${esc(i.name)}${i.custom ? ' <span class="rounded bg-gold px-1 text-[10px] font-bold">CUSTOM</span>' : ""}</span>
+          <span>${money(i.qty * i.price)}</span>
+        </div>
+        ${changed ? `<div class="text-xs text-red-600">Price changed: list price ${money(i.basePrice)}, charged ${money(i.price)}</div>` : ""}
+      </li>`;
+  }
+
+  function showDetail(s) {
+    detail.innerHTML = `
+      <div class="mb-1 text-lg font-bold">${esc(s.id)}</div>
+      <div class="mb-3 text-xs text-mist">${new Date(s.time).toLocaleString("en-GB")} · ${esc(s.cashier)}</div>
+      <ul class="mb-3 space-y-2">${s.items.map(itemLine).join("")}</ul>
+      <div class="flex justify-between border-t border-mist/30 pt-3 font-bold"><span>Total</span><span>${money(s.total)}</span></div>
+      <div class="mt-1 flex justify-between"><span>Paid by</span><span>${s.method === "cash" ? "Cash" : "MoMo"}</span></div>
+      ${s.method === "cash" ? `<div class="flex justify-between"><span>Tendered</span><span>${money(s.tendered)}</span></div><div class="flex justify-between"><span>Change</span><span>${money(s.change)}</span></div>` : ""}
+      <button id="reprint" class="mt-4 w-full rounded-xl bg-gold py-2.5 font-bold">Reprint receipt</button>`;
+    document.getElementById("reprint").addEventListener("click", () => printReceipt(s, RECEIPT_WIDTH));
+  }
+
+  list.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-id]");
+    if (!b) return;
+    const s = shown.find((x) => x.id === b.dataset.id);
+    if (s) showDetail(s);
+  });
+
+  rangeEl.addEventListener("change", load);
+  customOnlyEl.addEventListener("change", load);
+  load();
+</script>

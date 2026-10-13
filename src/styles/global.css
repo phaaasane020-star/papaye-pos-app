@@ -1,0 +1,293 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #474150;
+  --color-paper: #F5FFF4;
+  --color-mist: #9C99B8;
+  --color-gold: #FFBB00;
+
+  --font-sans: "Montserrat", system-ui, sans-serif;
+
+  --shadow-soft: 0 4px 16px -8px rgb(71 65 80 / 0.25);
+  --shadow-lift: 0 10px 24px -12px rgb(71 65 80 / 0.35);
+}
+
+/* ---------- Base ---------- */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-paper);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(156 153 184 / 0.6) transparent;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------- Keyframes (kept minimal) ---------- */
+@keyframes soft-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sheet-up {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes draw-check {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes print-out {
+  from { transform: translateY(-102%); }
+  to { transform: translateY(0); }
+}
+@keyframes bump {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* ---------- Motion helpers ----------
+   Every page uses these names. They are now just a quick, quiet fade. */
+.anim-fade-up,
+.anim-fade-in,
+.anim-slide-in,
+.anim-pop,
+.page-enter,
+.stagger-item {
+  animation: soft-in 0.2s ease both;
+}
+.float-y,
+.drift {
+  animation: none;
+}
+.bump {
+  animation: bump 0.25s ease;
+}
+
+.card-lift {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+@media (hover: hover) {
+  .card-lift:hover:not(:disabled) {
+    box-shadow: var(--shadow-soft);
+    border-color: rgb(255 187 0 / 0.7);
+  }
+}
+.card-lift:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.press {
+  transition: transform 0.1s ease, background-color 0.15s, border-color 0.15s;
+}
+.press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Plain gold button */
+.btn-gold {
+  background-color: #ffbb00;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+@media (hover: hover) {
+  .btn-gold:hover:not(:disabled) {
+    filter: brightness(0.96);
+  }
+}
+.btn-gold:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-gold:disabled {
+  filter: grayscale(0.4);
+}
+
+/* ---------- Pop-ups ---------- */
+dialog[open] {
+  animation: dialog-in 0.18s ease both;
+}
+dialog::backdrop {
+  background: rgb(71 65 80 / 0.5);
+  animation: soft-in 0.18s ease both;
+}
+
+/* ---------- Success tick ---------- */
+.check-circle {
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  animation: draw-check 0.5s cubic-bezier(0.65, 0, 0.45, 1) 0.1s forwards;
+}
+.check-mark {
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: draw-check 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.5s forwards;
+}
+
+/* ---------- Receipt paper preview ---------- */
+.print-slot {
+  overflow: hidden;
+  padding-bottom: 18px;
+}
+.paper-shadow {
+  filter: drop-shadow(0 6px 10px rgb(71 65 80 / 0.22));
+  animation: print-out 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both;
+}
+.torn {
+  --s: 12px;
+  --mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / var(--s) 100%;
+  -webkit-mask: var(--mask);
+  mask: var(--mask);
+}
+
+/* ---------- Dark overlay for the mobile cart ---------- */
+#cartScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgb(71 65 80 / 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+body.cart-open #cartScrim {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ============================================================
+   PHONES AND TABLETS  (below 1024px)
+   ============================================================ */
+@media (max-width: 1023px) {
+  /* Menu becomes a drawer that opens with the ☰ button */
+  #sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    width: 16rem;
+    max-width: 85vw;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.28s;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  body.menu-open #sidebar {
+    transform: none;
+    visibility: visible;
+    transition-delay: 0s;
+    box-shadow: 12px 0 40px -10px rgb(0 0 0 / 0.5);
+  }
+  #navScrim {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    background: rgb(71 65 80 / 0.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  body.menu-open #navScrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  body.menu-open,
+  body.cart-open {
+    overflow: hidden;
+  }
+
+  /* Inputs at 16px so iPhones don't zoom in when you tap them */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  /* Cart becomes a bottom sheet */
+  #cartPanel {
+    position: fixed !important;
+    inset: auto 0 0 0;
+    z-index: 40;
+    width: 100% !important;
+    max-height: 88dvh !important;
+    border-radius: 1.25rem 1.25rem 0 0 !important;
+    transform: translateY(110%);
+    transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+    animation: none !important;
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom)) !important;
+  }
+  body.cart-open #cartPanel {
+    transform: none;
+  }
+
+  /* Floating "view order" bar */
+  #cartBar {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    z-index: 30;
+    animation: sheet-up 0.25s ease both;
+  }
+  body.cart-open #cartBar {
+    display: none;
+  }
+
+  /* Pop-ups slide up as full-width sheets */
+  dialog {
+    width: 100% !important;
+    max-width: 100vw !important;
+    max-height: 94dvh !important;
+    margin: auto 0 0 0 !important;
+    border-radius: 1.25rem 1.25rem 0 0 !important;
+    overflow-y: auto;
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+  }
+  dialog[open] {
+    animation: sheet-up 0.25s ease both;
+  }
+
+  /* Payment successful: one scrolling column on phones */
+  #done {
+    padding: 0 !important;
+  }
+  #done > div {
+    max-height: none !important;
+  }
+  #done > div > div {
+    overflow: visible !important;
+  }
+}
+
+/* ============================================================
+   PC AND LARGE SCREENS  (1024px and up): menu always visible
+   ============================================================ */
+@media (min-width: 1024px) {
+  #menuBtn,
+  #closeMenu,
+  #navScrim,
+  #cartScrim,
+  #cartBar {
+    display: none !important;
+  }
+}
+
+/* ---------- Respect people who prefer less motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

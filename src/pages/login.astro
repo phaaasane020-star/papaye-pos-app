@@ -1,0 +1,181 @@
+---
+import "../styles/global.css";
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <title>Sign in | Papaye Fast Food</title>
+  </head>
+  <body class="grid min-h-screen bg-paper font-sans text-ink md:grid-cols-2">
+    <!-- Left brand panel -->
+    <div class="relative hidden flex-col justify-center overflow-hidden bg-ink p-12 text-paper md:flex">
+      <div class="drift pointer-events-none absolute -left-16 -top-16 h-72 w-72 rounded-full bg-gold/20 blur-2xl"></div>
+      <div class="drift pointer-events-none absolute -bottom-20 right-0 h-80 w-80 rounded-full bg-mist/25 blur-2xl" style="animation-delay:-4s"></div>
+
+      <div class="relative">
+        <div class="float-y mb-6 grid h-16 w-16 place-items-center rounded-3xl bg-gold text-3xl font-extrabold text-ink shadow-xl">P</div>
+        <div class="anim-fade-up text-5xl font-extrabold leading-tight tracking-tight">Papaye<br /><span class="text-gold">Fast Food</span></div>
+        <p class="anim-fade-up mt-6 max-w-xs text-lg font-semibold text-paper/90" style="animation-delay:120ms">Manage sales, stock and staff in one place.</p>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-center p-6">
+      <div class="anim-pop w-full max-w-sm">
+
+        <!-- Step 1: username + PIN -->
+        <form id="loginForm">
+          <h1 class="text-2xl font-bold">Welcome back</h1>
+          <p class="mb-6 text-sm text-mist">Sign in to start your shift</p>
+
+          <label for="username" class="text-sm font-semibold">Username</label>
+          <input id="username" autocomplete="off" class="mb-4 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-3 outline-none transition focus:border-gold focus:shadow-soft" />
+
+          <label for="pin" class="text-sm font-semibold">PIN</label>
+          <input id="pin" type="password" inputmode="numeric" maxlength="6" class="mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-3 outline-none transition focus:border-gold focus:shadow-soft" />
+
+          <p id="loginError" class="mt-3 hidden text-sm font-semibold text-red-600"></p>
+
+          <button id="loginSubmit" class="btn-gold mt-6 w-full rounded-xl py-3 font-bold text-ink disabled:opacity-50">Continue</button>
+        </form>
+
+        <!-- Step 2: authenticator code (and first-time setup) -->
+        <div id="stepCode" class="hidden">
+          <div id="setupBox" class="mb-5 hidden">
+            <h1 class="text-2xl font-bold">Set up your authenticator</h1>
+            <ol class="mt-3 list-decimal space-y-1 pl-5 text-sm">
+              <li>Install <b>Google Authenticator</b> or <b>Microsoft Authenticator</b> on your phone.</li>
+              <li>Tap <b>Add</b> and scan this QR code.</li>
+              <li>Type the 6-digit code it shows below.</li>
+            </ol>
+            <img id="qr" alt="QR code" class="anim-pop mx-auto my-4 h-48 w-48 rounded-xl bg-white p-2 shadow-soft" />
+            <p class="text-center text-xs text-mist">Can't scan? Enter this key manually:</p>
+            <p id="secret" class="mt-1 break-all text-center font-mono text-sm font-semibold"></p>
+          </div>
+
+          <form id="codeForm">
+            <div id="codeHead">
+              <h1 class="text-2xl font-bold">Enter your code</h1>
+              <p class="mb-4 text-sm text-mist">Open your authenticator app and type the 6-digit code for Papaye Fast Food.</p>
+            </div>
+
+            <input
+              id="code"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="7"
+              placeholder="123456"
+              class="w-full rounded-xl border border-mist/40 bg-white px-4 py-3 text-center text-2xl tracking-widest outline-none transition focus:border-gold focus:shadow-soft"
+            />
+
+            <p id="codeError" class="mt-3 hidden text-sm font-semibold text-red-600"></p>
+
+            <button id="codeSubmit" class="btn-gold mt-5 w-full rounded-xl py-3 font-bold text-ink disabled:opacity-50">Verify and sign in</button>
+            <button id="startOver" type="button" class="mt-2 w-full py-2 text-sm text-mist transition hover:text-ink">Use a different account</button>
+          </form>
+        </div>
+
+      </div>
+    </div>
+  </body>
+</html>
+
+<script>
+  const loginForm = document.getElementById("loginForm");
+  const stepCode = document.getElementById("stepCode");
+  const loginError = document.getElementById("loginError");
+  const codeError = document.getElementById("codeError");
+  const loginSubmit = document.getElementById("loginSubmit");
+  const codeSubmit = document.getElementById("codeSubmit");
+  const codeInput = document.getElementById("code");
+
+  async function post(url, body) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {}
+      return { ok: res.ok && data.ok, data };
+    } catch {
+      return { ok: false, data: { error: "Network problem. Check your connection and try again." } };
+    }
+  }
+
+  function showCodeStep() {
+    loginForm.classList.add("hidden");
+    stepCode.classList.remove("hidden");
+    stepCode.classList.add("anim-fade-up");
+    codeInput.value = "";
+    codeInput.focus();
+  }
+
+  async function showSetupStep() {
+    const res = await fetch("/api/2fa/setup");
+    let data = {};
+    try {
+      data = await res.json();
+    } catch {}
+
+    if (!res.ok || !data.ok) {
+      loginError.textContent = data.error || "Could not start setup. Please try again.";
+      loginError.classList.remove("hidden");
+      return;
+    }
+    document.getElementById("qr").src = data.qr;
+    document.getElementById("secret").textContent = data.secret;
+    document.getElementById("setupBox").classList.remove("hidden");
+    document.getElementById("codeHead").classList.add("hidden");
+    showCodeStep();
+  }
+
+  loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    loginError.classList.add("hidden");
+    loginSubmit.disabled = true;
+    loginSubmit.textContent = "Checking...";
+
+    const { ok, data } = await post("/api/login", {
+      username: document.getElementById("username").value,
+      pin: document.getElementById("pin").value,
+    });
+
+    if (ok) {
+      if (data.next === "setup") await showSetupStep();
+      else showCodeStep();
+    } else {
+      loginError.textContent = data.error || "Could not sign in.";
+      loginError.classList.remove("hidden");
+    }
+
+    loginSubmit.disabled = false;
+    loginSubmit.textContent = "Continue";
+  });
+
+  document.getElementById("codeForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    codeError.classList.add("hidden");
+    codeSubmit.disabled = true;
+    codeSubmit.textContent = "Checking...";
+
+    const { ok, data } = await post("/api/2fa/verify", { code: codeInput.value });
+
+    if (ok) {
+      location.href = "/";
+      return;
+    }
+    codeError.textContent = data.error || "Could not verify the code.";
+    codeError.classList.remove("hidden");
+    codeSubmit.disabled = false;
+    codeSubmit.textContent = "Verify and sign in";
+  });
+
+  document.getElementById("startOver").addEventListener("click", () => location.reload());
+</script>
