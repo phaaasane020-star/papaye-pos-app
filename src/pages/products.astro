@@ -34,7 +34,9 @@ import AppLayout from "../layouts/AppLayout.astro";
       <input id="fName" required maxlength="60" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
 
       <label for="fCategory" class="text-sm font-semibold">Category</label>
-      <select id="fCategory" class="mb-3 mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold"></select>
+      <input id="fCategory" list="catList" required maxlength="30" autocomplete="off" placeholder="Type a category, e.g. Rice Dishes" class="mt-1 w-full rounded-xl border border-mist/40 bg-white px-4 py-2.5 outline-none focus:border-gold" />
+      <datalist id="catList"></datalist>
+      <p class="mb-3 mt-1 text-xs text-mist">Pick one you used before, or type a new one to create it.</p>
 
       <!-- Different prices (only when adding a new food) -->
       <label id="fVaryWrap" class="mb-3 flex items-start gap-2 rounded-xl bg-gold/15 p-3 text-sm font-semibold">
@@ -75,7 +77,7 @@ import AppLayout from "../layouts/AppLayout.astro";
 
 <script>
   import { getSession } from "../lib/session.js";
-  import { categories, getProducts, createProduct, updateProduct, deleteProduct, uploadImage } from "../lib/products.js";
+  import { getProducts, createProduct, updateProduct, deleteProduct, uploadImage } from "../lib/products.js";
   import { confirmAction } from "../lib/confirm.js";
 
   const esc = (s) =>
@@ -128,8 +130,20 @@ import AppLayout from "../layouts/AppLayout.astro";
     let newPhotoUrl = null; // local preview of it
     let removePhoto = false;
 
-    fCategory.innerHTML = categories.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
-    const catName = (id) => categories.find((c) => c.id === id)?.name ?? id;
+    const catList = document.getElementById("catList");
+    const catName = (c) => c;
+
+    function fillCategories() {
+      const names = [...new Set(list.map((p) => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      catList.innerHTML = names.map((n) => `<option value="${esc(n)}"></option>`).join("");
+    }
+
+    // Reuse an existing spelling if the same category was typed with different capital letters
+    function cleanCategory(raw) {
+      const typed = raw.replace(/\s+/g, " ").trim();
+      const match = list.find((p) => p.category && p.category.toLowerCase() === typed.toLowerCase());
+      return match ? match.category : typed;
+    }
 
     // ---------- Several prices ----------
     function addVarRow(label = "", price = "") {
@@ -201,6 +215,8 @@ import AppLayout from "../layouts/AppLayout.astro";
         return;
       }
 
+      fillCategories();
+
       if (list.length === 0) {
         rows.innerHTML = '<li class="p-8 text-center text-sm text-mist">No foods yet. Tap "+ Add product" to start.</li>';
         return;
@@ -255,7 +271,7 @@ import AppLayout from "../layouts/AppLayout.astro";
       fId.value = p ? p.id : "";
       fName.value = p ? p.name : "";
       fName.maxLength = p ? 80 : 60;
-      fCategory.value = p ? p.category : categories[0].id;
+      fCategory.value = p ? p.category : "";
       fPrice.value = p ? p.price : "";
       fStock.checked = p ? p.inStock : true;
 
@@ -339,6 +355,8 @@ import AppLayout from "../layouts/AppLayout.astro";
       e.preventDefault();
       const name = fName.value.trim();
       if (!name) return;
+      const category = cleanCategory(fCategory.value);
+      if (!category) return alert("Enter a category.");
 
       const varying = !editing && fVary.checked;
       let variants = [];
@@ -372,7 +390,7 @@ import AppLayout from "../layouts/AppLayout.astro";
         }
       }
 
-      const payload = { name, category: fCategory.value, inStock: fStock.checked };
+      const payload = { name, category, inStock: fStock.checked };
       if (varying) payload.variants = variants;
       else payload.price = price;
 

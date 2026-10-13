@@ -1,6 +1,5 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { categories } from "../data/menu.js";
 ---
 <AppLayout title="Sell" crumbs={["Sell"]}>
   <div class="flex flex-col items-start gap-6 lg:flex-row">
@@ -15,11 +14,6 @@ import { categories } from "../data/menu.js";
         <button data-cat="all" class="cat press shrink-0 whitespace-nowrap rounded-xl border border-ink bg-ink px-4 py-2.5 text-sm font-semibold text-paper transition">
           All
         </button>
-        {categories.map((c) => (
-          <button data-cat={c.id} class="cat press shrink-0 whitespace-nowrap rounded-xl border border-mist/40 bg-white px-4 py-2.5 text-sm font-semibold text-ink transition hover:border-gold">
-            {c.name}
-          </button>
-        ))}
       </div>
 
       <div id="grid" class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3"></div>
@@ -241,7 +235,7 @@ import { categories } from "../data/menu.js";
 
 <script>
   import { printReceipt, mountPreview, getPaperWidth, setPaperWidth } from "../lib/receipt.js";
-  import { categories, getProducts } from "../lib/products.js";
+  import { getProducts } from "../lib/products.js";
   import { api } from "../lib/client-api.js";
   import { confirmAction } from "../lib/confirm.js";
 
@@ -285,6 +279,7 @@ import { categories } from "../data/menu.js";
       .join("");
     try {
       products = await getProducts();
+      renderCats();
       renderProducts();
     } catch (e) {
       grid.innerHTML = `<p class="col-span-full text-sm font-semibold text-red-600">Could not load the menu. ${esc(e.message)}</p>`;
@@ -361,21 +356,39 @@ import { categories } from "../data/menu.js";
     }
   });
 
-  // Category chips
-  document.querySelectorAll(".cat").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      currentCat = btn.dataset.cat;
-      document.querySelectorAll(".cat").forEach((b) => {
-        const on = b === btn;
-        b.classList.toggle("bg-ink", on);
-        b.classList.toggle("border-ink", on);
-        b.classList.toggle("text-paper", on);
-        b.classList.toggle("bg-white", !on);
-        b.classList.toggle("border-mist/40", !on);
-        b.classList.toggle("text-ink", !on);
-      });
-      renderProducts();
+  // Category chips (built from the foods the manager has added)
+  const catsEl = $("cats");
+  const CHIP_ON = ["bg-ink", "border-ink", "text-paper"];
+  const CHIP_OFF = ["bg-white", "border-mist/40", "text-ink"];
+
+  function paintChips() {
+    catsEl.querySelectorAll(".cat").forEach((b) => {
+      const on = b.dataset.cat === currentCat;
+      CHIP_ON.forEach((c) => b.classList.toggle(c, on));
+      CHIP_OFF.forEach((c) => b.classList.toggle(c, !on));
     });
+  }
+
+  function renderCats() {
+    const names = [...new Set(products.map((p) => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    if (currentCat !== "all" && !names.includes(currentCat)) currentCat = "all";
+    catsEl.innerHTML =
+      '<button data-cat="all" class="cat press shrink-0 whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-semibold transition">All</button>' +
+      names
+        .map(
+          (n) =>
+            `<button data-cat="${esc(n)}" class="cat press shrink-0 whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-semibold transition hover:border-gold">${esc(n)}</button>`
+        )
+        .join("");
+    paintChips();
+  }
+
+  catsEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".cat");
+    if (!btn) return;
+    currentCat = btn.dataset.cat;
+    paintChips();
+    renderProducts();
   });
 
   // Search box in the top bar
@@ -658,7 +671,10 @@ import { categories } from "../data/menu.js";
   const cPrice = $("cPrice");
   const cQty = $("cQty");
 
-  const customCats = [...categories, { id: "other", name: "Other" }];
+  const customCats = () => [
+    ...[...new Set(products.map((p) => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map((n) => ({ id: n, name: n })),
+    { id: "other", name: "Other" },
+  ];
 
   function fillItems() {
     const cat = cCategory.value;
@@ -683,7 +699,7 @@ import { categories } from "../data/menu.js";
 
   $("customBtn").addEventListener("click", () => {
     customForm.reset();
-    cCategory.innerHTML = customCats.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+    cCategory.innerHTML = customCats().map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
     cQty.value = 1;
     fillItems();
     customDlg.showModal();

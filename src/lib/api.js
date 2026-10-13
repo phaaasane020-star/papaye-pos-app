@@ -1,5 +1,4 @@
 import { readSession } from "./auth.js";
-import { categories } from "../data/menu.js";
 
 export const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -35,8 +34,9 @@ export function validateProduct(body, partial = false) {
     out.name = name;
   }
   if (!partial || "category" in body) {
-    if (!categories.some((c) => c.id === body.category)) return { error: "Choose a valid category." };
-    out.category = body.category;
+    const category = String(body.category ?? "").replace(/\s+/g, " ").trim();
+    if (!category || category.length > 30) return { error: "Enter a category (up to 30 characters)." };
+    out.category = category;
   }
   if (!partial || "price" in body) {
     const price = Number(body.price);
